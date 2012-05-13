@@ -7,7 +7,9 @@ import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
+import javafx.event.Event;
 import javafx.event.EventHandler;
+import javafx.geometry.Orientation;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
@@ -19,6 +21,7 @@ import net.javabeat.db.Todo;
 import net.javabeat.db.TodoDAO;
 
 import java.net.UnknownHostException;
+import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.Set;
 
@@ -31,7 +34,7 @@ import java.util.Set;
  */
 public class TodoAppRunner extends Application{
     
-    public static final int APP_WIDTH = 200;
+    public static final int APP_WIDTH = 220;
     public static final int APP_HEIGHT = 300;
 
     public static void main(String[] args) throws UnknownHostException{
@@ -56,7 +59,8 @@ public class TodoAppRunner extends Application{
        Application.launch(args);
 
     }
-    static Integer id = 1;
+    
+    List<Todo> openTodos;
     @Override
     public void start(Stage stage) throws Exception {
         BorderPane root = new BorderPane();
@@ -71,6 +75,7 @@ public class TodoAppRunner extends Application{
         root.setCenter(tabPane);
         stage.setScene(scene);
         stage.setTitle("My Todo's!");
+        stage.setResizable(false);
         stage.show();
     }
 
@@ -127,74 +132,95 @@ public class TodoAppRunner extends Application{
     }
 
     private Tab buildShowAllTodoUi(){
-        final ObservableList<Object> allTodos =
-                FXCollections.observableArrayList();
-
         final ScrollPane todoListScroll = ScrollPaneBuilder.create()
                 .hbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED)
+                .prefHeight(APP_HEIGHT - 75)
+                .maxWidth(APP_WIDTH)
                 .build();
 
-        Button refreshTodos = ButtonBuilder.create()
-                .text("Refresh Todo's")
-                .onAction(new EventHandler<ActionEvent>() {
-                    @Override
-                    public void handle(ActionEvent actionEvent) {
-                        allTodos.clear();
-                        try {
-                            List<Todo> todos = TodoDAO.getOpenTodos();
-                            GridPane todoBox;
-                            VBox todoListBox = new VBox(5);
-                            todoListBox.autosize();
-                            Image image = new Image(getClass().getResourceAsStream("check.png"));
-                            for (final Todo aTodo : todos) {
-                                Button doneButton = ButtonBuilder.create()
-                                        .graphic(new ImageView(image))
-                                        .onAction(new EventHandler<ActionEvent>() {
-                                            @Override
-                                            public void handle(ActionEvent actionEvent) {
-                                                System.out.println("Clearning: " + aTodo);
-                                            }
-                                        })
-                                        .build();
-
-                                Label taskLabel = LabelBuilder.create()
-                                        .text(aTodo.getTask())
-                                        .wrapText(true)
-                                        .build();
-                                Label postedOn = LabelBuilder.create()
-                                        .text(aTodo.getAdded().toString())
-                                        .build();
-
-                                todoBox = new GridPane();
-                                todoBox.add(postedOn,1,1);
-                                todoBox.add(taskLabel,1,2);
-                                todoBox.add(doneButton,3,2);
-
-                                todoListBox.getChildren().add(todoBox);
-
-
-                            }
-                            todoListScroll.setContent(todoListBox);
-
-                        } catch (UnknownHostException ex) {
-                            ex.printStackTrace();
-                        }
-                    }
-                })
-                .build();
-        VBox allTodosBox = VBoxBuilder.create()
-                .children(refreshTodos,todoListScroll)
-                .spacing(10)
-                .translateY(10)
-                .translateX(10)
-                .build();
+        final VBox todoBox = new VBox();
+        todoListScroll.setContent(todoBox);
 
         Tab allTodosTab = TabBuilder.create()
                 .text("All todos")
-                .content(allTodosBox)
+
+                .content(todoListScroll)
                 .closable(false)
+                .onSelectionChanged(
+                        new TodoLoader(todoBox)
+                )
                 .build();
 
         return allTodosTab;
+    }
+}
+
+class TodoLoader implements EventHandler<Event>{
+
+    List<Todo> openTodos;   
+    VBox todoBox;
+    
+    TodoLoader(VBox todoBox){
+        this.todoBox = todoBox;
+    }
+    @Override
+    public void handle(Event event) {
+        //Clear the existing Todos, for adding new Todos
+        todoBox.getChildren().clear();
+        try {
+            openTodos = TodoDAO.getOpenTodos();
+            for(Todo aTodo : openTodos){
+                GridPane todoPane = new GridPane();
+
+                Label taskLabel = new Label(aTodo.getTask());
+                SimpleDateFormat simpleDateFormat = new SimpleDateFormat("");
+                Label dateAdded = new Label(aTodo.getAdded().toString());
+                CloseTodoHandler closeHandler =
+                        new CloseTodoHandler(todoBox,
+                                todoPane,
+                                aTodo);
+                Button closeButton  = ButtonBuilder.create()
+                        .graphic(new ImageView(
+                                new Image(getClass().getResourceAsStream("check.png"))))
+                        .onAction(closeHandler)
+                        .build();
+
+                todoPane.add(taskLabel,1,1,5,1);
+                todoPane.add(dateAdded,1,2,4,1);
+                todoPane.add(closeButton, 5, 2, 1, 1);
+                todoBox.setSpacing(10);
+                todoBox.getChildren().add(todoPane);
+
+            }
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        }
+
+
+    }
+}
+
+class CloseTodoHandler implements EventHandler<ActionEvent>{
+
+    VBox todoBox;
+    GridPane todoPane;
+    Todo todo;
+
+    CloseTodoHandler(VBox todoBox,
+                     GridPane todoPane,
+                     Todo todo){
+        this.todo = todo;
+        this.todoBox = todoBox;
+        this.todoPane = todoPane;
+    }
+    @Override
+    public void handle(ActionEvent actionEvent) {
+        try {
+            TodoDAO.setTodoAsCompleted(todo);
+            todoBox.getChildren().remove(todoPane);
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        }
+
     }
 }
